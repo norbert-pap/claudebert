@@ -1,0 +1,390 @@
+#!/usr/bin/env node
+// ux-components — CLI for querying the ux-components.com component reference
+// Usage:
+//   ux-components search <query>       — fuzzy search components by name/description
+//   ux-components lookup <id>           — full details for a component
+//   ux-components compare <id1> <id2>   — compare two components side-by-side
+//   ux-components list [category]       — list all components, optionally filter by category
+//   ux-components categories            — list all categories
+//   ux-components systems               — list all design systems tracked
+//   ux-components links <id>            — show documentation links across design systems
+//   ux-components update                — re-fetch the data from ux-components.com
+
+const fs = require("fs");
+const path = require("path");
+const https = require("https");
+const vm = require("vm");
+
+const CACHE_DIR = path.join(__dirname, ".cache");
+const CACHE_FILE = path.join(CACHE_DIR, "components-data.js");
+const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
+const DATA_URL = "https://www.ux-components.com/components-data.js";
+
+// ── Data fetching ──────────────────────────────────────────────────────────
+
+function httpGet(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return httpGet(res.headers.location).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        return reject(new Error(`HTTP ${res.statusCode}`));
+      }
+      const chunks = [];
+      res.on("data", (c) => chunks.push(c));
+      res.on("end", () => resolve(Buffer.concat(chunks).toString()));
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+}
+
+async function ensureData(forceUpdate = false) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+
+  if (!forceUpdate && fs.existsSync(CACHE_FILE)) {
+    const age = Date.now() - fs.statSync(CACHE_FILE).mtimeMs;
+    if (age < CACHE_MAX_AGE_MS) return;
+  }
+
+  process.stderr.write("Fetching ux-components.com data...\n");
+  const raw = await httpGet(DATA_URL);
+  fs.writeFileSync(CACHE_FILE, raw);
+  process.stderr.write("Cached.\n");
+}
+
+function loadData() {
+  const raw = fs.readFileSync(CACHE_FILE, "utf8");
+
+  // Replace const/let with var so declarations attach to the sandbox context
+  const transformed = raw.replace(/^(const|let)\s+/gm, "var ");
+  const sandbox = {};
+  const ctx = vm.createContext(sandbox);
+  try {
+    vm.runInContext(transformed, ctx);
+  } catch (e) {
+    process.stderr.write(`Warning: VM eval partial failure: ${e.message}\n`);
+  }
+
+  return sandbox;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function stripHtml(html) {
+  if (!html) return "";
+  return html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+}
+
+function resolveAkaUrl(data, system, term) {
+  const config = (data.DESIGN_SYSTEM_URLS || {})[system];
+  if (!config) return null;
+  if (config.urlFn) {
+    try { return config.urlFn(term); } catch { return null; }
+  }
+  const key = term.toLowerCase();
+  let slug;
+  if (config.map && key in config.map) {
+    if (config.map[key] === null) return null;
+    slug = config.map[key];
+  } else if (config.slugFn === "raw") {
+    slug = key;
+  } else {
+    slug = key.replace(/\s+/g, "-").replace(/[/'()]/g, "");
+  }
+  return config.base + slug + (config.suffix || "");
+}
+
+// ── Formatting ─────────────────────────────────────────────────────────────
+
+// Fields: id, name, category, desc, what, anatomy[{title,desc}], use[], avoid[],
+//         icons[], states[{name,desc}], prompt, related[], aka[{system,term}], previews[]
+
+function formatComponent(c, verbose = false) {
+  const lines = [];
+  lines.push(`## ${c.name} (${c.category})`);
+  if (c.desc) lines.push(`\n${c.desc}`);
+
+  if (!verbose) return lines.join("\n");
+
+  if (c.what) {
+    lines.push(`\n### Overview`);
+    lines.push(stripHtml(c.what));
+  }
+
+  if (c.anatomy && c.anatomy.length) {
+    lines.push(`\n### Anatomy`);
+    c.anatomy.forEach((a) => {
+      lines.push(`- **${a.title}**: ${a.desc}`);
+    });
+  }
+
+  if (c.use && c.use.length) {
+    lines.push(`\n### When to use`);
+    c.use.forEach((u) => lines.push(`- ${u}`));
+  }
+
+  if (c.avoid && c.avoid.length) {
+    lines.push(`\n### When NOT to use`);
+    c.avoid.forEach((u) => lines.push(`- ${u}`));
+  }
+
+  if (c.states && c.states.length) {
+    lines.push(`\n### States`);
+    c.states.forEach((s) => {
+      lines.push(`- **${s.name}**: ${s.desc}`);
+    });
+  }
+
+  if (c.related && c.related.length) {
+    lines.push(`\n### Related`);
+    lines.push(c.related.join(", "));
+  }
+
+  if (c.aka && c.aka.length) {
+    lines.push(`\n### Names across design systems`);
+    c.aka.forEach((a) => {
+      if (a.system && a.term) lines.push(`- ${a.system}: ${a.term}`);
+    });
+  }
+
+  return lines.join("\n");
+}
+
+// ── Commands ───────────────────────────────────────────────────────────────
+
+function cmdSearch(data, query) {
+  const q = query.toLowerCase();
+  const components = data.COMPONENTS || [];
+  const results = components.filter((c) => {
+    const akaTerms = (c.aka || []).map((a) => a.term || "").join(" ");
+    const haystack = [c.name, c.id, c.desc, c.category, stripHtml(c.what), akaTerms, ...(c.use || []), ...(c.avoid || [])].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(q);
+  });
+
+  if (results.length === 0) {
+    console.log(`No components matching "${query}".`);
+    return;
+  }
+
+  console.log(`Found ${results.length} component(s) matching "${query}":\n`);
+  results.forEach((c) => console.log(formatComponent(c, false) + "\n"));
+}
+
+function cmdLookup(data, id) {
+  const components = data.COMPONENTS || [];
+  const c = components.find((x) => x.id === id || x.name.toLowerCase() === id.toLowerCase());
+  if (!c) {
+    console.log(`Component "${id}" not found. Try: ux-components search ${id}`);
+    return;
+  }
+  console.log(formatComponent(c, true));
+}
+
+function cmdCompare(data, id1, id2) {
+  const components = data.COMPONENTS || [];
+  const find = (id) => components.find((x) => x.id === id || x.name.toLowerCase() === id.toLowerCase());
+  const c1 = find(id1);
+  const c2 = find(id2);
+
+  if (!c1) { console.log(`Component "${id1}" not found.`); return; }
+  if (!c2) { console.log(`Component "${id2}" not found.`); return; }
+
+  console.log(`# ${c1.name} vs ${c2.name}\n`);
+
+  console.log(`## Category`);
+  console.log(`- **${c1.name}**: ${c1.category}`);
+  console.log(`- **${c2.name}**: ${c2.category}\n`);
+
+  console.log(`## Description`);
+  console.log(`- **${c1.name}**: ${c1.desc || "—"}`);
+  console.log(`- **${c2.name}**: ${c2.desc || "—"}\n`);
+
+  // When to use
+  const use1 = c1.use || [];
+  const use2 = c2.use || [];
+  if (use1.length || use2.length) {
+    console.log(`## When to use`);
+    console.log(`### ${c1.name}`);
+    use1.forEach((u) => console.log(`- ${u}`));
+    console.log(`### ${c2.name}`);
+    use2.forEach((u) => console.log(`- ${u}`));
+    console.log();
+  }
+
+  // When NOT to use
+  const avoid1 = c1.avoid || [];
+  const avoid2 = c2.avoid || [];
+  if (avoid1.length || avoid2.length) {
+    console.log(`## When NOT to use`);
+    console.log(`### ${c1.name}`);
+    avoid1.forEach((u) => console.log(`- ${u}`));
+    console.log(`### ${c2.name}`);
+    avoid2.forEach((u) => console.log(`- ${u}`));
+    console.log();
+  }
+
+  // States comparison
+  const states1 = c1.states || [];
+  const states2 = c2.states || [];
+  if (states1.length || states2.length) {
+    const s1names = states1.map((s) => s.name);
+    const s2names = states2.map((s) => s.name);
+    const all = [...new Set([...s1names, ...s2names])];
+    console.log(`## States`);
+    console.log(`| State | ${c1.name} | ${c2.name} |`);
+    console.log(`|-------|${"-".repeat(c1.name.length + 2)}|${"-".repeat(c2.name.length + 2)}|`);
+    all.forEach((s) => {
+      console.log(`| ${s} | ${s1names.includes(s) ? "yes" : "—"} | ${s2names.includes(s) ? "yes" : "—"} |`);
+    });
+  }
+}
+
+function cmdList(data, category) {
+  const components = data.COMPONENTS || [];
+  let filtered = components;
+  if (category) {
+    const cat = category.toLowerCase();
+    filtered = components.filter((c) => c.category && c.category.toLowerCase().includes(cat));
+  }
+
+  if (filtered.length === 0) {
+    console.log(category ? `No components in category "${category}".` : "No components loaded.");
+    return;
+  }
+
+  const groups = {};
+  filtered.forEach((c) => {
+    const cat = c.category || "Uncategorized";
+    (groups[cat] = groups[cat] || []).push(c);
+  });
+
+  Object.entries(groups)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .forEach(([cat, comps]) => {
+      console.log(`\n### ${cat}`);
+      comps.sort((a, b) => a.name.localeCompare(b.name)).forEach((c) => {
+        console.log(`- **${c.name}** (${c.id})${c.desc ? " — " + c.desc : ""}`);
+      });
+    });
+}
+
+function cmdCategories(data) {
+  const components = data.COMPONENTS || [];
+  const cats = [...new Set(components.map((c) => c.category).filter(Boolean))].sort();
+  console.log(`## Categories (${cats.length})\n`);
+  cats.forEach((c) => {
+    const count = components.filter((x) => x.category === c).length;
+    console.log(`- **${c}** (${count} components)`);
+  });
+}
+
+function cmdSystems(data) {
+  const systems = data.DESIGN_SYSTEMS || [];
+  const companies = data.DESIGN_SYSTEM_COMPANIES || {};
+  console.log(`## Design Systems (${systems.length})\n`);
+  systems.forEach((s) => {
+    const company = companies[s];
+    console.log(`- **${s}**${company ? ` (${company})` : ""}`);
+  });
+}
+
+function cmdLinks(data, id) {
+  const components = data.COMPONENTS || [];
+  const c = components.find((x) => x.id === id || x.name.toLowerCase() === id.toLowerCase());
+  if (!c) { console.log(`Component "${id}" not found.`); return; }
+
+  console.log(`## ${c.name} — Documentation Links\n`);
+
+  const aka = c.aka || [];
+  if (!aka.length) {
+    console.log("No cross-system references available.");
+    return;
+  }
+
+  aka.forEach((a) => {
+    const url = resolveAkaUrl(data, a.system, a.term);
+    if (url) {
+      console.log(`- **${a.system}**: [${a.term}](${url})`);
+    } else {
+      console.log(`- **${a.system}**: ${a.term}`);
+    }
+  });
+}
+
+// ── Main ───────────────────────────────────────────────────────────────────
+
+async function main() {
+  const [, , cmd, ...args] = process.argv;
+
+  if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
+    console.log(`ux-components — Query the ux-components.com component reference (49 components, 33 design systems)
+
+Usage:
+  ux-components search <query>       Fuzzy search by name/description/use cases
+  ux-components lookup <id>          Full details: anatomy, use/avoid, states, aka
+  ux-components compare <id1> <id2>  Side-by-side comparison
+  ux-components list [category]      List all (or filter: Form, Overlay, Navigation, etc.)
+  ux-components categories           List all categories with counts
+  ux-components systems              List all 33 tracked design systems
+  ux-components links <id>           Doc links across all design systems
+  ux-components update               Re-fetch data from ux-components.com
+
+Data source: https://www.ux-components.com
+Cached at: ${CACHE_FILE}
+Cache TTL: 7 days (use 'update' to force refresh)`);
+    return;
+  }
+
+  const forceUpdate = cmd === "update";
+  await ensureData(forceUpdate);
+  if (forceUpdate) { console.log("Data updated."); return; }
+
+  const data = loadData();
+  const componentCount = (data.COMPONENTS || []).length;
+  if (componentCount === 0) {
+    console.error("Failed to parse component data. Try: ux-components update");
+    process.exit(1);
+  }
+
+  switch (cmd) {
+    case "search":
+    case "s":
+      if (!args[0]) { console.log("Usage: ux-components search <query>"); return; }
+      cmdSearch(data, args.join(" "));
+      break;
+    case "lookup":
+    case "l":
+      if (!args[0]) { console.log("Usage: ux-components lookup <id>"); return; }
+      cmdLookup(data, args[0]);
+      break;
+    case "compare":
+    case "cmp":
+      if (!args[0] || !args[1]) { console.log("Usage: ux-components compare <id1> <id2>"); return; }
+      cmdCompare(data, args[0], args[1]);
+      break;
+    case "list":
+    case "ls":
+      cmdList(data, args[0]);
+      break;
+    case "categories":
+    case "cats":
+      cmdCategories(data);
+      break;
+    case "systems":
+    case "sys":
+      cmdSystems(data);
+      break;
+    case "links":
+      if (!args[0]) { console.log("Usage: ux-components links <id>"); return; }
+      cmdLinks(data, args[0]);
+      break;
+    default:
+      console.log(`Unknown command: ${cmd}. Run 'ux-components help' for usage.`);
+  }
+}
+
+main().catch((e) => {
+  console.error(e.message);
+  process.exit(1);
+});

@@ -1,0 +1,6 @@
+# Compiled browse binary (rebuild with ./setup)
+browse/dist/
+browse/node_modules/
+
+# OS files
+.DS_Store
