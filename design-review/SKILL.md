@@ -76,7 +76,9 @@ Read these based on what the review needs:
 - **`doctrine/cta-persuasion.md`** — CTA design, ethical persuasion, trust signals, cognitive load, perception/framing (Boag/Click!). Load during Layer 1 provocations for any site with CTAs, and during Layer 2 for marketing/product sites.
 - **`doctrine/design-system-review.md`** — Design system coherence evaluation: functional vs. perceptual patterns, specificity scale, naming, signature patterns, system red flags (Kholmatova). Load during Layer 2 design system extraction and cross-page consistency.
 - **`doctrine/touch-mobile.md`** — Touch/mobile design: center-out principle, zone-based touch targets, multi-encoding, gesture rules, mobile layout (Hoober). Load during Layer 2 responsive audit for any mobile/touch interface.
-- **`doctrine/animation-polish.md`** — Animation decision framework, easing rules, duration guidelines, component interaction polish, performance rules, review checklist (Kowalski). Load during Layer 2 interaction states audit, or during Layer 1 when questioning motion quality.
+- **`doctrine/animation-polish.md`** — Animation decision framework, easing rules, duration guidelines, stagger patterns, reduced-motion alternatives, component interaction polish, performance rules, review checklist (Kowalski + designpowers). Load during Layer 2 interaction states audit, or during Layer 1 when questioning motion quality.
+- **`doctrine/voice-and-tone.md`** — Voice attributes ("this, not that"), tone by context (error/success/empty/loading), vocabulary lists, reading level targets, copy consistency checklist. Load during Layer 1 copy provocations or Layer 2 when evaluating interface copy.
+- **`doctrine/inclusive-personas.md`** — Ability spectrum (permanent/temporary/situational), scenario intersections, 5 proxy-user checklist for reviews (screen reader, keyboard-only, low-vision, cognitive load, one-handed mobile). Load during Layer 2 accessibility and responsive audits.
 
 ### Product-Specific Lenses (loaded on demand)
 
@@ -405,10 +407,15 @@ Structure as **Inferred Design System**: Fonts, Colors, Heading Scale, Spacing P
 - When questioning a component choice (e.g., dialog vs sheet, popover vs tooltip), use `tools/ux-components compare` to check use/avoid guidance across 33 design systems
 
 **5. Responsive**
-- Mobile layout makes design sense, touch targets adequate
-- No horizontal scroll, responsive images, readable text
+- Content-driven breakpoints, not device-based (break when layout breaks, not at 768px)
+- Content priority shifting: what gets kept / collapsed / deferred / hidden at narrow widths
+- Fluid typography: `clamp()` for headings and body, body min 16px, line length 45-75 chars
+- Container queries (`@container`) for component adaptation vs `@media` for page layout
+- Touch targets >= 44px with 8px minimum gap between adjacent targets
+- No horizontal scroll at 200% zoom (WCAG 1.4.10), no `user-scalable=no`
 - Navigation collapse, mobile-friendly forms
-- No `user-scalable=no`
+- Test at: 320px, each breakpoint boundary, 200% zoom at 1280px, landscape phone
+- Load `doctrine/inclusive-personas.md` for one-handed mobile user check
 
 **6. Performance**
 - LCP < 2.0s, CLS < 0.1
@@ -420,8 +427,18 @@ Structure as **Inferred Design System**: Fonts, Colors, Heading Scale, Spacing P
 - Color never sole way to convey information
 - `focus-visible` ring on all interactive elements
 - Screen reader basics, `prefers-reduced-motion`
+- Load `doctrine/inclusive-personas.md` and run the 5 proxy-user checklist (screen reader, keyboard-only, low-vision zoom, cognitive load, one-handed mobile)
 
-**8. AI Slop Scan**
+**8. Cognitive Accessibility**
+- **Cognitive load:** How many decisions per screen? How many concepts simultaneously? Can the task be simplified?
+- **Extraneous load:** Information scattered vs. logically organized? Instructions visible vs. must-remember? Consistent patterns?
+- **Wayfinding:** Does the user always know where they are (breadcrumbs, nav highlight), where they can go (visible CTAs), where they've been (visited styles, progress)?
+- **Focus management:** One primary action per screen? Visual hierarchy guides attention? Minimal interruptions?
+- **Error recovery:** Undo available? Destructive actions confirmed? Form input preserved on failure? Formatting forgiven?
+- **Memory demands:** Is info from step 2 displayed in step 5, or must the user recall it? Progressive disclosure?
+- **Timed actions:** If timeouts exist, warn before expiry and allow extension
+
+**9. AI Slop Scan**
 - Read `lenses/ai-slop.md` for the full pattern list
 - Flag every match with severity and specific evidence
 

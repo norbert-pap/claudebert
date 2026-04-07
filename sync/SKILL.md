@@ -90,6 +90,14 @@ The watchlist defines which upstream sources to check. Each source has a type an
       "repo": "rohitg00/awesome-claude-code-toolkit",
       "path": "",
       "description": "Comprehensive Claude Code toolkit — skills, plugins, agents"
+    },
+    {
+      "id": "designpowers",
+      "type": "github-repo",
+      "repo": "Owl-Listener/designpowers",
+      "path": "skills/",
+      "description": "Multi-agent design system — cognitive a11y, motion, tokens, voice, responsive, inclusive personas",
+      "watch_for": ["cognitive-accessibility", "motion-choreography", "token-architecture", "voice-and-tone", "responsive-patterns", "inclusive-personas", "interaction-design", "adaptive-interfaces", "design-taste"]
     }
   ]
 }

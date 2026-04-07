@@ -115,6 +115,37 @@ Reduced motion means fewer and gentler, not zero. Keep opacity and color transit
 ### Touch hover states
 Gate hover animations behind `@media (hover: hover) and (pointer: fine)`. Touch devices trigger hover on tap, causing false positives.
 
+## Stagger Patterns
+
+When multiple elements enter together:
+- 50-80ms delay between items
+- Maximum 5 items staggered, rest appear instantly
+- Follow reading order (left-to-right, top-to-bottom)
+- Reveal hierarchy: important items first
+- Never block interaction during stagger animation
+
+## Reduced Motion — adapted from designpowers
+
+`prefers-reduced-motion: reduce` means reduce, not remove.
+
+| Standard | Reduced alternative |
+|----------|-------------------|
+| Slide in | Fade in |
+| Scale with bounce | Instant appearance |
+| Parallax scroll | Static |
+| Staggered reveal | Simultaneous fade |
+| Continuous pulse | Static state |
+
+**Every animation must have a reduced-motion alternative. No exceptions.**
+
+## What NOT to Animate
+
+- Text colour changes (photosensitive risk)
+- Layout properties in hot paths (use transform/opacity)
+- Anything that delays task completion
+- Decorative loops without user control
+- Keyboard-initiated actions (repeated hundreds of times daily)
+
 ## Review Checklist
 
 When auditing animation/interaction quality, flag:
@@ -130,7 +161,8 @@ When auditing animation/interaction quality, flag:
 | Hover animation without `@media (hover: hover)` | Add media query |
 | Keyframes on rapidly-triggered element | Use CSS transitions |
 | Same enter/exit speed | Make exit faster than enter |
-| Elements all appear at once | Add stagger (30–80ms) |
+| Elements all appear at once | Add stagger (50–80ms, max 5 items) |
 | No `:active` state on buttons | Add `scale(0.97)` press feedback |
 | No `prefers-reduced-motion` handling | Add reduced motion styles |
 | Animating layout properties (height, margin) | Switch to transform + opacity |
+| No reduced-motion alternative | Add fade/static fallback for every animation |

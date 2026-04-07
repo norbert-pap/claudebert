@@ -235,6 +235,23 @@ Scale: {list of values actually used}
 | Cards | {value} |
 | Inputs | {value} |
 
+### Token Architecture
+
+Tokens should follow a three-layer model:
+
+**Layer 1: Global tokens** — raw values, named by what they ARE:
+`--color-green-500`, `--space-4`, `--radius-md`
+These never appear in component CSS directly.
+
+**Layer 2: Semantic tokens** — map globals to roles, named by what they DO:
+`--color-surface`, `--color-text-primary`, `--color-accent`
+Theming happens here — dark mode swaps semantic mappings, not global values.
+
+**Layer 3: Component tokens** (optional) — map semantic to component context:
+`--button-bg`, `--card-bg`
+
+Naming convention: `--{category}-{property}-{variant}-{state}`
+
 ### Breakpoints
 
 | Name | Value |
