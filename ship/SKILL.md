@@ -35,6 +35,12 @@ echo "BRANCH: $_BRANCH"
 
 ---
 
+## Session State
+
+Read `SESSION-PROTOCOL.md` for the full protocol. In brief:
+- **At start:** Read `.claudebert/session-state.md` — this is the most important skill to read session state, since ship aggregates all prior findings. Reference what code-review, security-review, perf-review, QA, and design-review already found.
+- **At end:** Append the go/no-go recommendation and any blockers to the session state file
+
 ## Step 0: Detect base branch & context
 
 ```bash

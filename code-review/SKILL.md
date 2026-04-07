@@ -40,6 +40,13 @@ echo "BRANCH: $_BRANCH"
 
 When reviewing code, bias toward the complete implementation. If a shortcut saves modest human effort but costs only minutes more with AI assistance, flag the gap. 100% test coverage is the vibe code unlock — tests make shipping safe and fast.
 
+## Session State
+
+Read `SESSION-PROTOCOL.md` for the full protocol. In brief:
+- **At start:** Read `.claudebert/session-state.md` if it exists — prior skills may have flagged issues or made decisions relevant to this review
+- **At end:** Append a summary of findings and decisions to the session state file
+- If eng-review ran before this, reference its architecture decisions when reviewing code structure
+
 ## Step 0: Detect base branch
 
 Determine which branch this PR targets. Use the result as "the base branch" in all subsequent steps.

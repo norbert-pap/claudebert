@@ -185,6 +185,24 @@ ToolSearch: select:mcp__claude_ai_Figma__get_design_context,mcp__claude_ai_Figma
 
 **Fallback:** If Figma MCP server unavailable, inform user and offer plan-only review or manual screenshot.
 
+**Load Taste Profile (cross-project, if exists):**
+
+```bash
+TASTE_FILE="$HOME/.claudebert/taste-profile.md"
+if [ -f "$TASTE_FILE" ]; then
+  echo "TASTE_PROFILE: $TASTE_FILE"
+else
+  echo "NO_TASTE_PROFILE — will offer to create after this review"
+fi
+```
+
+The taste profile captures the user's aesthetic preferences across ALL projects — not design tokens (those are per-project in DESIGN.md) but higher-level sensibilities: how they feel about whitespace, animation, density, color warmth, typography personality, etc. It calibrates the creative director's provocations so they don't keep challenging decisions the user has already made deliberately across multiple projects.
+
+If a taste profile exists, read it during Voice Calibration (Phase 0) and use it to:
+- Skip provocations about preferences already established (e.g., if the user consistently chooses minimal motion, don't provoke about "why so little animation?")
+- Calibrate severity — a deviation from taste profile is more likely intentional than accidental
+- Add provocation when the design CONTRADICTS the taste profile ("You usually prefer tight spacing — this is unusually loose. Intentional?")
+
 **Load Design DNA (if exists):**
 
 ```bash
@@ -332,6 +350,53 @@ Flag any feature where states are unspecified.
 - "Does the spec define the twist, or just the functional requirements?"
 - "Is the information architecture clear? Can you trace what the user sees first, second, third?"
 - "Which features have no error state specified? Which have no empty state?"
+
+### Phase 2c: Design Debate (optional)
+
+**Trigger:** When the provocations reveal a genuine fork — two legitimate design directions with real tradeoffs, not a clear right/wrong. The creative director's gut says "both could work." Examples: minimal vs. expressive, product-led vs. brand-led, information-dense vs. progressive disclosure.
+
+**Do NOT debate when:** One direction is clearly better, or the disagreement is about taste rather than strategy.
+
+When triggered, spawn two subagents using the Agent tool with opposing briefs:
+
+**Agent A — Direction 1:**
+```
+You are arguing FOR {direction A} in a design debate about {the specific design question}.
+Context: {site/mockup description, gut reaction, relevant provocations so far}
+
+Make your case in 3-5 bullet points:
+- Why this direction serves the USER better
+- What it enables that the other direction doesn't
+- What the risk is if you DON'T go this way
+- One concrete example of how it would look/feel
+
+Be specific to THIS product. No generic arguments. End with: "The cost of the other direction is: {one sentence}."
+```
+
+**Agent B — Direction 2:**
+Same structure, arguing the opposite.
+
+Run both agents in parallel. Present the results side-by-side to the user:
+
+```
+Re-ground: Design review on {branch}, Layer 1 — I see a genuine fork in direction.
+
+The question: {the specific design tension}
+
+DIRECTION A: {name}
+{Agent A's case}
+
+DIRECTION B: {name}
+{Agent B's case}
+
+RECOMMENDATION: Choose {X} because {one-line reason based on product context, taste profile, and DESIGN.md if available}
+A) Go with Direction A
+B) Go with Direction B
+C) Synthesize — take the best of both
+D) Neither — discuss further
+```
+
+Record the chosen direction in the session state. This decision informs Layer 2 and any fix work.
 
 ### Phase 3: Product-Grounded Ideas
 
@@ -591,6 +656,53 @@ mkdir -p ~/.claudebert/projects/$SLUG
 ### PR Summary Format
 
 > "Design review on {branch}: {verdict summary}. {N} findings ({M} fixed, {K} deferred)."
+
+### Taste Profile Update
+
+After the report, if a taste profile does NOT exist yet, offer to create one:
+
+> **I noticed patterns in your design preferences during this review. Want me to create a taste profile?**
+>
+> A taste profile captures your aesthetic sensibilities across projects — whitespace, animation, density, color warmth, typography personality. It helps future reviews skip questions about preferences you've already established.
+>
+> A) **Yes** — create `~/.claudebert/taste-profile.md` based on this review
+> B) **Not yet** — I'll ask again after a few more reviews
+
+If a taste profile ALREADY exists, check if this review revealed any new preferences or contradicted existing ones. If so:
+
+> **Your taste profile says "{preference}" but this review went differently. Update it?**
+>
+> A) **Update** — this review reflects my current taste
+> B) **Keep** — this project is an exception, my general taste hasn't changed
+
+**Taste profile format:**
+
+```markdown
+# Taste Profile
+Last updated: {date}
+Reviews informing this profile: {count}
+
+## Sensibilities
+
+| Dimension | Preference | Strength |
+|-----------|-----------|----------|
+| Whitespace | Generous — breathing room over density | Strong |
+| Animation | Minimal — snappy transitions, no decoration | Strong |
+| Color warmth | Neutral-cool — no warm oranges/yellows | Moderate |
+| Typography | Clean sans-serif, tight heading weights | Strong |
+| Density | Medium — not sparse, not cramped | Moderate |
+| Border radius | Subtle (4-8px) — no pill shapes | Moderate |
+| Visual complexity | Low — clarity over richness | Strong |
+
+## Established Decisions
+- {decision 1 — seen across 2+ projects}
+- {decision 2}
+
+## Anti-Preferences
+- {thing the user consistently rejects}
+```
+
+Save to `~/.claudebert/taste-profile.md`. Strength is "Strong" (seen 3+ times), "Moderate" (seen 2 times), or "Emerging" (seen once, might change).
 
 ### Linear Logging
 

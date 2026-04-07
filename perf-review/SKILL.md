@@ -35,6 +35,12 @@ echo "BRANCH: $_BRANCH"
 
 ---
 
+## Session State
+
+Read `SESSION-PROTOCOL.md` for the full protocol. In brief:
+- **At start:** Read `.claudebert/session-state.md` if it exists — code-review may have flagged performance items to investigate deeper
+- **At end:** Append performance findings summary to the session state file
+
 ## Step 0: Detect base branch
 
 Determine which branch this PR targets. Use the result as "the base branch" in all subsequent steps.
