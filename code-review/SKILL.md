@@ -40,13 +40,6 @@ echo "BRANCH: $_BRANCH"
 
 When reviewing code, bias toward the complete implementation. If a shortcut saves modest human effort but costs only minutes more with AI assistance, flag the gap. 100% test coverage is the vibe code unlock — tests make shipping safe and fast.
 
-## Session State
-
-Read `SESSION-PROTOCOL.md` for the full protocol. In brief:
-- **At start:** Read `.claudebert/session-state.md` if it exists — prior skills may have flagged issues or made decisions relevant to this review
-- **At end:** Append a summary of findings and decisions to the session state file
-- If eng-review ran before this, reference its architecture decisions when reviewing code structure
-
 ## Step 0: Detect base branch
 
 Determine which branch this PR targets. Use the result as "the base branch" in all subsequent steps.
@@ -176,7 +169,7 @@ No new attack surface introduced.
 - Secrets or credentials in code
 - XSS vectors (user data rendered without escaping)
 
-For a deep security audit, recommend `/security-review` after this review.
+Critical or High findings here trigger the Deep Security Dive (Phase 5).
 
 ### Axis 5: Performance
 
@@ -187,7 +180,7 @@ No unnecessary degradation introduced.
 - Large synchronous operations in request handlers
 - Bundle size impact (new large dependencies)
 
-For a deep performance audit, recommend `/perf-review` after this review.
+Critical or High findings here trigger the Deep Performance Dive (Phase 5b).
 
 ---
 
@@ -380,6 +373,49 @@ Check if the diff touches frontend files (CSS, HTML, JSX, TSX, Vue, Svelte, or v
 4. **Include findings** in the review output under a "Design Review" header. Mechanical CSS fixes follow the AUTO-FIX flow; design judgment calls go to ASK.
 
 For a comprehensive visual audit, recommend `/design-review` after implementation.
+
+---
+
+## Phase 5: Deep Security Dive (conditional)
+
+**Trigger:** Only run this phase if Axis 4 (Security) found Critical or High findings, OR if the diff introduces new API endpoints, auth logic, or user input handling.
+
+**If not triggered:** Skip silently.
+
+**If triggered:** Run a focused OWASP-style audit on the flagged areas:
+
+- **Injection:** SQL, command, template, path traversal, log injection, header injection — check for raw string interpolation in queries, user input in `exec`/`spawn`, user input in file paths
+- **Auth/session:** Passwords hashed properly? Rate limiting on auth endpoints? Session invalidation on password change? JWT expiry and signing algorithm?
+- **Access control:** IDOR checks — can user A access user B's data by changing IDs? Missing role checks on admin endpoints? Client-side-only authorization?
+- **Secrets:** Scan diff for hardcoded keys/tokens/passwords:
+  ```bash
+  git diff $BASE...HEAD | grep -iE '(password|secret|api.?key|private.?key)\s*[:=]' || true
+  ```
+- **Input validation:** Unbounded input? Missing content-type validation on uploads? ReDoS-vulnerable regex?
+- **Dependencies:**
+  ```bash
+  npm audit --production 2>/dev/null | tail -5 || true
+  ```
+
+Findings follow the same Fix-First classification (AUTO-FIX / ASK) and severity labels (Critical / High) as Phase 3. Merge into the same output.
+
+---
+
+## Phase 5b: Deep Performance Dive (conditional)
+
+**Trigger:** Only run this phase if Axis 5 (Performance) found Critical or High findings, OR if the diff introduces new database queries, list endpoints, or large data processing.
+
+**If not triggered:** Skip silently.
+
+**If triggered:** Walk through the diagnostic decision tree on flagged areas:
+
+- **Database:** N+1 queries (DB call inside loop)? Missing LIMIT on list endpoints? Filtering on non-indexed column? SELECT * when few fields needed?
+- **API endpoints:** Sequential awaits that could be parallel? No pagination? Heavy computation in request path? Missing cache headers?
+- **Frontend:** Large dependency imported at top level? Expensive computation in render without memo? Missing key prop? Layout shift from dynamic content? Images without dimensions/lazy loading?
+- **Data processing:** Entire dataset loaded into memory? No streaming for large payloads?
+- **Infrastructure:** Missing connection pooling? No timeout on external calls?
+
+Quantify impact where possible ("N+1 on 100-item list = 101 queries"). Findings follow the same Fix-First flow.
 
 ---
 

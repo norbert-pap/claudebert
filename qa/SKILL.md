@@ -38,12 +38,6 @@ Per-skill instructions may add additional formatting rules on top of this baseli
 
 ---
 
-## Session State
-
-Read `SESSION-PROTOCOL.md` for the full protocol. In brief:
-- **At start:** Read `.claudebert/session-state.md` if it exists — code-review may have flagged areas to focus QA testing on
-- **At end:** Append QA findings summary (health score, issues found/fixed) to the session state file
-
 ## Step 0: Intake
 
 **Ask one question before doing anything else.** Use AskUserQuestion.
